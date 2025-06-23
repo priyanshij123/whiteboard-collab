@@ -1,5 +1,3 @@
-// ================= BACKEND: index.js =================
-
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
@@ -10,12 +8,14 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors());
+
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: 'https://whiteboard-collab-psi.vercel.app',
-    methods: ['GET', 'POST'],
-  },
+    methods: ['GET', 'POST']
+  }
 });
 
 mongoose.connect(process.env.MONGO_URI, {
@@ -24,36 +24,34 @@ mongoose.connect(process.env.MONGO_URI, {
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.log(err));
 
-const roomData = {}; // In-memory room history
+app.get('/', (req, res) => {
+  res.send('Whiteboard backend is live!');
+});
 
 io.on('connection', (socket) => {
+  console.log(' Socket connected:', socket.id);
+
   socket.on('join-room', async (roomId) => {
     socket.join(roomId);
+    console.log(` User joined room: ${roomId}`);
+
     await Room.findOneAndUpdate(
       { roomId },
       { roomId },
       { upsert: true, new: true }
     );
-
-    // Send existing canvas history
-    if (roomData[roomId]) {
-      socket.emit('load-history', roomData[roomId]);
-    } else {
-      roomData[roomId] = [];
-    }
   });
 
-  socket.on('draw', ({ roomId, data }) => {
-    if (roomData[roomId]) {
-      roomData[roomId].push(data);
-    }
-    socket.to(roomId).emit('draw', data);
+  socket.on('draw', (data) => {
+    
+    socket.to(data.roomId).emit('draw', data);
   });
 
   socket.on('clear', (roomId) => {
-    roomData[roomId] = [];
+   
     socket.to(roomId).emit('clear');
   });
 });
 
-server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
