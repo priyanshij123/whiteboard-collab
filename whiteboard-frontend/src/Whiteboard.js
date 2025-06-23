@@ -36,6 +36,30 @@ const Whiteboard = () => {
 
     socket.on('draw', handleDrawRemote);
     socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+    socket.on('load-history', (actions) => {
+  const ctx = ctxRef.current;
+  actions.forEach(obj => {
+    ctx.beginPath();
+    ctx.strokeStyle = obj.color;
+    ctx.fillStyle = obj.color;
+    ctx.lineWidth = obj.lineWidth || 2;
+    ctx.font = `${obj.size || 16}px sans-serif`;
+
+    if (obj.type === 'line') {
+      ctx.moveTo(obj.x0, obj.y0);
+      ctx.lineTo(obj.x1, obj.y1);
+      ctx.stroke();
+    } else if (obj.type === 'rect') {
+      ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
+    } else if (obj.type === 'circle') {
+      ctx.arc(obj.x, obj.y, obj.r, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (obj.type === 'text') {
+      ctx.fillText(obj.text, obj.x, obj.y);
+    }
+  });
+});
+
   }, [roomId]);
 
   const saveState = () => {
