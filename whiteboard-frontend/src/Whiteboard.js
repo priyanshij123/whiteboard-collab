@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import jsPDF from 'jspdf';
 
-const socket = io('https://whiteboard-backend-zpz7.onrender.com'); // Use deployed URL after hosting
+const socket = io('https://whiteboard-backend-zpz7.onrender.com'); // Your Render backend URL
 
 const Whiteboard = () => {
   const { roomId } = useParams();
@@ -16,7 +16,6 @@ const Whiteboard = () => {
   const [penSize, setPenSize] = useState(2);
   const [eraserSize, setEraserSize] = useState(10);
   const [drawing, setDrawing] = useState(false);
-  const [history, setHistory] = useState([]);
   const [objects, setObjects] = useState([]);
   const start = useRef({ x: 0, y: 0 });
 
@@ -34,29 +33,30 @@ const Whiteboard = () => {
     tempCanvas.width = window.innerWidth;
     tempCanvas.height = window.innerHeight;
 
-    socket.on('draw', drawRemote);
+    socket.on('draw', (data) => {
+      const ctx = ctxRef.current;
+      ctx.beginPath();
+      ctx.strokeStyle = data.color;
+      ctx.lineWidth = data.size || 2;
+
+      if (data.type === 'line') {
+        ctx.moveTo(data.x0, data.y0);
+        ctx.lineTo(data.x1, data.y1);
+        ctx.stroke();
+      } else if (data.type === 'rect') {
+        ctx.strokeRect(data.x0, data.y0, data.x1 - data.x0, data.y1 - data.y0);
+      } else if (data.type === 'circle') {
+        const r = Math.sqrt(Math.pow(data.x1 - data.x0, 2) + Math.pow(data.y1 - data.y0, 2));
+        ctx.arc(data.x0, data.y0, r, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    });
+
     socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
   }, [roomId]);
 
-  const saveState = () => {
-    const img = canvasRef.current.toDataURL();
-    setHistory((prev) => [...prev, img]);
-  };
-
-  const drawRemote = ({ type, x0, y0, x1, y1, color }) => {
-    const ctx = ctxRef.current;
-    ctx.strokeStyle = color;
-    ctx.beginPath();
-    if (type === 'line') {
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-    } else if (type === 'rect') {
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-    } else if (type === 'circle') {
-      const radius = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2);
-      ctx.arc(x0, y0, radius, 0, 2 * Math.PI);
-    }
-    ctx.stroke();
+  const saveObject = (obj) => {
+    setObjects((prev) => [...prev, obj]);
   };
 
   const startDraw = (e) => {
@@ -64,15 +64,14 @@ const Whiteboard = () => {
     start.current = { x: offsetX, y: offsetY };
 
     if (tool === 'text') {
-      alert("Tap to add text");
+      alert('Tap to add text');
       const text = prompt('Enter text:');
       if (text) {
         const ctx = ctxRef.current;
         ctx.fillStyle = color;
         ctx.font = `${fontSize}px sans-serif`;
         ctx.fillText(text, offsetX, offsetY);
-        setObjects([...objects, { type: 'text', text, x: offsetX, y: offsetY, color, size: fontSize }]);
-        saveState();
+        saveObject({ type: 'text', text, x: offsetX, y: offsetY, color, size: fontSize });
       }
     } else if (tool === 'pen' || tool === 'eraser') {
       setDrawing(true);
@@ -87,41 +86,40 @@ const Whiteboard = () => {
   };
 
   const draw = (e) => {
-    const { offsetX, offsetY } = e.nativeEvent;
     if (!drawing) return;
+    const { offsetX, offsetY } = e.nativeEvent;
+
+    const ctx = ctxRef.current;
 
     if (tool === 'pen' || tool === 'eraser') {
-      const ctx = ctxRef.current;
       ctx.lineTo(offsetX, offsetY);
       ctx.stroke();
       socket.emit('draw', {
         roomId,
-        data: {
-          type: 'line',
-          x0: start.current.x,
-          y0: start.current.y,
-          x1: offsetX,
-          y1: offsetY,
-          color: tool === 'eraser' ? '#ffffff' : color,
-        },
+        type: 'line',
+        x0: start.current.x,
+        y0: start.current.y,
+        x1: offsetX,
+        y1: offsetY,
+        color: tool === 'eraser' ? '#ffffff' : color,
+        size: tool === 'eraser' ? eraserSize : penSize,
       });
       start.current = { x: offsetX, y: offsetY };
-      return;
-    }
+    } else {
+      const tempCtx = tempCanvasRef.current.getContext('2d');
+      tempCtx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
+      tempCtx.strokeStyle = color;
 
-    const tempCtx = tempCanvasRef.current.getContext('2d');
-    tempCtx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-    tempCtx.strokeStyle = color;
-
-    if (tool === 'rectangle') {
-      const width = offsetX - start.current.x;
-      const height = offsetY - start.current.y;
-      tempCtx.strokeRect(start.current.x, start.current.y, width, height);
-    } else if (tool === 'circle') {
-      const radius = Math.sqrt((offsetX - start.current.x) ** 2 + (offsetY - start.current.y) ** 2);
-      tempCtx.beginPath();
-      tempCtx.arc(start.current.x, start.current.y, radius, 0, 2 * Math.PI);
-      tempCtx.stroke();
+      if (tool === 'rectangle') {
+        const width = offsetX - start.current.x;
+        const height = offsetY - start.current.y;
+        tempCtx.strokeRect(start.current.x, start.current.y, width, height);
+      } else if (tool === 'circle') {
+        const radius = Math.sqrt((offsetX - start.current.x) ** 2 + (offsetY - start.current.y) ** 2);
+        tempCtx.beginPath();
+        tempCtx.arc(start.current.x, start.current.y, radius, 0, 2 * Math.PI);
+        tempCtx.stroke();
+      }
     }
   };
 
@@ -130,36 +128,46 @@ const Whiteboard = () => {
     setDrawing(false);
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = ctxRef.current;
-    const newObj = {};
 
     if (tool === 'rectangle') {
       const width = offsetX - start.current.x;
       const height = offsetY - start.current.y;
       ctx.strokeStyle = color;
       ctx.strokeRect(start.current.x, start.current.y, width, height);
-      newObj.type = 'rect';
-      newObj.x = start.current.x;
-      newObj.y = start.current.y;
-      newObj.w = width;
-      newObj.h = height;
-    } else if (tool === 'circle') {
+
+      socket.emit('draw', {
+        roomId,
+        type: 'rect',
+        x0: start.current.x,
+        y0: start.current.y,
+        x1: offsetX,
+        y1: offsetY,
+        color,
+      });
+
+      saveObject({ type: 'rect', x: start.current.x, y: start.current.y, w: width, h: height, color });
+    }
+
+    if (tool === 'circle') {
       const radius = Math.sqrt((offsetX - start.current.x) ** 2 + (offsetY - start.current.y) ** 2);
       ctx.beginPath();
       ctx.arc(start.current.x, start.current.y, radius, 0, 2 * Math.PI);
       ctx.stroke();
-      newObj.type = 'circle';
-      newObj.x = start.current.x;
-      newObj.y = start.current.y;
-      newObj.r = radius;
+
+      socket.emit('draw', {
+        roomId,
+        type: 'circle',
+        x0: start.current.x,
+        y0: start.current.y,
+        x1: offsetX,
+        y1: offsetY,
+        color,
+      });
+
+      saveObject({ type: 'circle', x: start.current.x, y: start.current.y, r: radius, color });
     }
 
     tempCanvasRef.current.getContext('2d').clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-
-    if (newObj.type) {
-      newObj.color = color;
-      setObjects([...objects, newObj]);
-      saveState();
-    }
   };
 
   const undo = () => {
@@ -167,11 +175,14 @@ const Whiteboard = () => {
     setObjects(newObjects);
     const ctx = ctxRef.current;
     ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    newObjects.forEach(obj => {
+
+    newObjects.forEach((obj) => {
       ctx.beginPath();
       ctx.strokeStyle = obj.color;
       ctx.fillStyle = obj.color;
+      ctx.lineWidth = penSize;
       ctx.font = `${obj.size || 16}px sans-serif`;
+
       if (obj.type === 'text') ctx.fillText(obj.text, obj.x, obj.y);
       if (obj.type === 'rect') ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
       if (obj.type === 'circle') {
@@ -183,9 +194,8 @@ const Whiteboard = () => {
 
   const clearCanvas = () => {
     ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    socket.emit('clear', roomId);
     setObjects([]);
-    setHistory([]);
+    socket.emit('clear', roomId);
   };
 
   const exportImage = () => {
@@ -217,15 +227,15 @@ const Whiteboard = () => {
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
 
         {tool === 'pen' && (
-          <input type="range" min="1" max="20" value={penSize} onChange={(e) => setPenSize(parseInt(e.target.value))} />
+          <input type="range" min="1" max="20" value={penSize} onChange={(e) => setPenSize(+e.target.value)} />
         )}
 
         {tool === 'eraser' && (
-          <input type="range" min="5" max="50" value={eraserSize} onChange={(e) => setEraserSize(parseInt(e.target.value))} />
+          <input type="range" min="5" max="50" value={eraserSize} onChange={(e) => setEraserSize(+e.target.value)} />
         )}
 
         {tool === 'text' && (
-          <input type="number" min="10" max="100" value={fontSize} onChange={(e) => setFontSize(parseInt(e.target.value))} />
+          <input type="number" min="10" max="100" value={fontSize} onChange={(e) => setFontSize(+e.target.value)} />
         )}
 
         <button onClick={undo}>Undo</button>
