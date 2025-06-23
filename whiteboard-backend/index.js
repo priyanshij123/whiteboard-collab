@@ -8,12 +8,14 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors());
+
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: 'https://whiteboard-collab-psi.vercel.app',
-    methods: ['GET', 'POST'],
-  },
+    methods: ['GET', 'POST']
+  }
 });
 
 mongoose.connect(process.env.MONGO_URI, {
@@ -22,9 +24,17 @@ mongoose.connect(process.env.MONGO_URI, {
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.log(err));
 
+app.get('/', (req, res) => {
+  res.send('Whiteboard backend is live!');
+});
+
 io.on('connection', (socket) => {
+  console.log('✅ Socket connected:', socket.id);
+
   socket.on('join-room', async (roomId) => {
     socket.join(roomId);
+    console.log(`👤 User joined room: ${roomId}`);
+
     await Room.findOneAndUpdate(
       { roomId },
       { roomId },
@@ -32,13 +42,16 @@ io.on('connection', (socket) => {
     );
   });
 
-  socket.on('draw', ({ roomId, data }) => {
-    socket.to(roomId).emit('draw', data);
+  socket.on('draw', (data) => {
+    console.log(`✏️ Drawing in room: ${data.roomId}`);
+    socket.to(data.roomId).emit('draw', data);
   });
 
   socket.on('clear', (roomId) => {
+    console.log(`🧹 Clear request in room: ${roomId}`);
     socket.to(roomId).emit('clear');
   });
 });
 
-server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
