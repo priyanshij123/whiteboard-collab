@@ -20,7 +20,7 @@
 
 ## 🌐 Live Demo
 
-👉 [Try the Live Whiteboard](https://whiteboard-collab-psi.vercel.app/)
+👉 [Try the Live Whiteboard](https://drive.google.com/file/d/1-57E9zXQtreDiMSHQjLveBlQWbaKKHRs/view?usp=drive_link)
 
 ### Prerequisites
 
