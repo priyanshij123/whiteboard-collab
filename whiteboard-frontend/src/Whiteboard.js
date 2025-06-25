@@ -79,7 +79,7 @@ const Whiteboard = () => {
     start.current = { x: offsetX, y: offsetY };
 
     if (tool === 'text') {
-      alert('Tap to add text');
+      
       const text = prompt('Enter text:');
       if (text) {
         const ctx = ctxRef.current;
